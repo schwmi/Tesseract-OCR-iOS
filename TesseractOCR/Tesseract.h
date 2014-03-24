@@ -26,6 +26,8 @@
 
 @property (nonatomic, readonly) short progress; // from 0 to 100
 @property (nonatomic, readonly) NSString *recognizedText;
+@property (nonatomic, readonly) NSUInteger meanConfidence;
+@property (nonatomic, readonly) NSString *largestSymbol;
 
 @property (nonatomic, weak) id<TesseractDelegate> delegate;
 

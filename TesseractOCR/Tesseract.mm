@@ -74,7 +74,7 @@ namespace tesseract {
 }
 
 - (id)initPrivateWithDataPath:(NSString *)dataPath language:(NSString *)language {
-
+    
 	self = [super init];
 	if (self) {
 		_dataPath = dataPath;
@@ -83,14 +83,14 @@ namespace tesseract {
         _monitor = new ETEXT_DESC();
         _monitor->cancel = (CANCEL_FUNC)[self methodForSelector:@selector(tesserackCallbackFunction:)];
         _monitor->cancel_this = (__bridge void*)self;
-
+        
 		_variables = [[NSMutableDictionary alloc] init];
 		
         if (dataPath)
             [self copyDataToDocumentsDirectory];
         else
             [self setUpTesseractToSearchTrainedDataInTrainedDataFolderOfTheApplicatinBundle];
-
+        
 		_tesseract = new tesseract::TessBaseAPI();
 		
 		BOOL success = [self initEngine];
@@ -130,7 +130,7 @@ namespace tesseract {
 	{
 		[fileManager createDirectoryAtPath:dataPath withIntermediateDirectories:YES attributes:nil error:NULL];
 	}
-
+    
 	NSBundle *bundle = [NSBundle bundleForClass:[self class]];
     for (NSString *l in [_language componentsSeparatedByString:@"+"]) {
         NSString *tessdataPath = [bundle pathForResource:l ofType:@"traineddata"];
@@ -214,7 +214,7 @@ namespace tesseract {
 	
 	// Create a context with RGBA _pixels
 	CGContextRef context = CGBitmapContextCreate(_pixels, width, height, 8, width * sizeof(uint32_t), colorSpace,
-								   kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedLast);
+                                                 kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedLast);
 	
 	// Paint the bitmap to our context which will fill in the _pixels array
 	CGContextDrawImage(context, CGRectMake(0, 0, width, height), [image CGImage]);
@@ -227,16 +227,58 @@ namespace tesseract {
 }
 
 - (void)setRect:(CGRect)rect {
-    
 	_tesseract->SetRectangle(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
 }
 
+- (NSUInteger)meanConfidence {
+    CGFloat confidence = 0;
+    NSUInteger numberOfValues = 0;
+    tesseract::ResultIterator *resultIterator = _tesseract->GetIterator();
+    tesseract::PageIteratorLevel level = tesseract::RIL_SYMBOL;
+    if(resultIterator != nullptr) {
+        do {
+            const char* symbol = resultIterator->GetUTF8Text(level);
+            float conf = resultIterator->Confidence(level);
+            if(symbol != 0) {
+                confidence += conf;
+                numberOfValues++;
+            }
+            delete[] symbol;
+        } while((resultIterator->Next(level)));
+    }
+    
+    if (numberOfValues == 0) {
+        return 0;
+    }
+    return (NSUInteger)confidence/numberOfValues;
+}
+
+- (NSString *)largestSymbol {
+    int left,top,right,bottom,maxheight = 0;
+    NSString *largestSymbol;
+    tesseract::ResultIterator *resultIterator = _tesseract->GetIterator();
+    tesseract::PageIteratorLevel level = tesseract::RIL_SYMBOL;
+    if(resultIterator != nullptr) {
+        do {
+            const char* symbol = resultIterator->GetUTF8Text(level);
+            resultIterator->BoundingBox(level, &left, &top, &right, &bottom);
+            if(abs(top - bottom) > maxheight && symbol) {
+                maxheight = abs(top-bottom);
+                largestSymbol = [NSString stringWithFormat:@"%c",*symbol];
+            }
+            delete[] symbol;
+        } while((resultIterator->Next(level)));
+    }
+    return largestSymbol;
+}
+
+
 - (NSString *)recognizedText {
-	char* utf8Text = _tesseract->GetUTF8Text();
-	if (!utf8Text) {
-		NSLog(@"No recognized text. Check that -[Tesseract setImage:] is passed an image bigger than 0x0.");
-		return nil;
-	}
+    char* utf8Text = _tesseract->GetUTF8Text();
+    if (!utf8Text) {
+        NSLog(@"No recognized text. Check that -[Tesseract setImage:] is passed an image bigger than 0x0.");
+        return nil;
+    }
     NSString *text = [NSString stringWithUTF8String:utf8Text];
     delete[] utf8Text;
     return text;
@@ -256,8 +298,8 @@ namespace tesseract {
 
 - (BOOL)recognize {
     
-	int returnCode = _tesseract->Recognize(_monitor);
-	return (returnCode == 0) ? YES : NO;
+    int returnCode = _tesseract->Recognize(_monitor);
+    return (returnCode == 0) ? YES : NO;
 }
 
 - (BOOL)tesserackCallbackFunction:(int)words {
